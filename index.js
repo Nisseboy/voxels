@@ -22,17 +22,26 @@ let freeCam;
 let materials = [];
 
 
-function start() {
+async function start() {
   materials = [
-    new Material({c: 0xffffff}),
-    new Material({c: 0x747474, strength: 0.8}), //Stone
-    new Material({c: 0x444444, strength: 0.99}), //Hard stone
-    new Material({c: 0x444444, strength: 1}), //Unbreakable stone
-    new Material({c: 0xffff00, strength: 0.8, emissive: 0xffff00}), //Fire
-    new Material({c: 0x007400, strength: 0.2}), //Grass
+    {c: 0xffffff},
+    {c: 0x747474, strength: 0.8}, //Stone
+    {c: 0x444444, strength: 0.99}, //Hard stone
+    {c: 0x444444, strength: 1}, //Unbreakable stone
+    {c: 0xffff00, strength: 0.8, emissive: 0xffff00}, //Fire
+    {c: 0x007400, strength: 0.2}, //Grass
   ];
 
-  world = new World()
+  for (let i in entityTypes) {
+    let e = entityTypes[i];
+    if (!e.voxPath) continue;
+    e.vox = await loadVOX(e.voxPath);
+  }
+  
+  world = new World(new THREE.Vector3(10, 1, 10), 1)
+  world.generateWorld("terrain");
+  world.entities.push(new Entity("dragon", new THREE.Vector3(0, 0.5, 0)));
+
   freeCam = new FreeCam;
   setScene(freeCam);
 }

@@ -17,7 +17,14 @@ class FreeCam {
     casterOutline = mesh;
   }
   keyPressed(e) {
-    if (getKeyPressed("Debug Mode")) materials.forEach(e=>e.THREEMaterial.wireframe = debug);
+    if (getKeyPressed("Debug Mode")) {
+      function f(world) {
+        world.materials.forEach(e=>e.THREEMaterial.wireframe = debug);
+        world.entities.forEach(e=>f(e.world));
+      }
+      
+      f(world);
+    }
   }
   mouseMoved(e) {
     camera.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), e.movementX / window.innerWidth * -5);
@@ -32,9 +39,17 @@ class FreeCam {
     };
   }
   update() { 
+    let camDir = new THREE.Vector3();
+    camera.getWorldDirection(camDir);
+
     let movement = new THREE.Vector3(pressed[68] - pressed[65], pressed[32] - pressed[67], pressed[83] - pressed[87]).divideScalar(fps).applyAxisAngle(new THREE.Vector3(0, 1, 0).normalize(), camera.rotation.y);
     camera.position.add(movement);
     casterOutline.position.set(0, 0, 0);
+
+    for (let i of [world]) {
+      i.voxelDataObject.position.copy(camera.position).add(camDir.clone().multiplyScalar(0.1));
+      i.voxelDataObject.rotation.copy(camera.rotation);
+    }
     
     THREEcaster.setFromCamera( new THREE.Vector2(0, 0), camera );
     let intersects = THREEcaster.intersectObjects( THREEscene.children );

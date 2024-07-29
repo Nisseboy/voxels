@@ -53,6 +53,8 @@ uniform sampler2D anisotropyMap;
 varying vec3 vViewPosition;
 
 varying vec3 vWorldPosition;
+uniform float scale;
+
 #include <common>
 #include <packing>
 #include <dithering_pars_fragment>
@@ -84,10 +86,10 @@ varying vec3 vWorldPosition;
 #include <logdepthbuf_pars_fragment>
 #include <clipping_planes_pars_fragment>
 float rand(vec3 co){
-    return fract(sin(dot(co, vec3(12.9898, 78.233, 45.723))) * 43758.5453);
+  return fract(sin(dot(co, vec3(12.9898, 78.233, 45.723))) * 43758.5453);
 }
 void main() {
-  vec4 diffuseColor = vec4( diffuse * (1.0 + floor(rand(floor(vWorldPosition * 16.0 + 0.0001) / 16.0) * 4.0) / 4.0 / 4.0), opacity );
+  vec4 diffuseColor = vec4( diffuse * (1.0 + floor(rand(floor(vWorldPosition * 16.0 * scale + 0.0001) / 16.0 / scale) * 4.0) / 4.0 / 4.0), opacity );
   #include <clipping_planes_fragment>
   ReflectedLight reflectedLight = ReflectedLight( vec3( 0.0 ), vec3( 0.0 ), vec3( 0.0 ), vec3( 0.0 ) );
   vec3 totalEmissiveRadiance = emissive;
@@ -110,7 +112,7 @@ void main() {
   #include <lights_fragment_end>
   #include <aomap_fragment>
   vec3 totalDiffuse = reflectedLight.directDiffuse + reflectedLight.indirectDiffuse;
-  vec3 totalSpecular = vec3(0.0);//reflectedLight.directSpecular + reflectedLight.indirectSpecular;
+  vec3 totalSpecular = vec3(0.0);
   #include <transmission_fragment>
   vec3 outgoingLight = totalDiffuse + totalSpecular + totalEmissiveRadiance;
   #ifdef USE_SHEEN

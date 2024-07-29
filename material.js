@@ -1,5 +1,5 @@
 class Material {
-  constructor(props) {
+  constructor(props, scale) {
     this.c = props.c;
     this.emissive = props.emissive || 0;
     //this.path = props.path;
@@ -20,6 +20,19 @@ class Material {
       this.THREEMaterial.onBeforeCompile = function(info) {
         info.vertexShader = THREEShaders.noise.vertex;
         info.fragmentShader = THREEShaders.noise.fragment;
+        info.uniforms.scale = {value: 1 / scale}
+
+        
+       /*
+        info.vertexShader = info.vertexShader
+          .replace("#ifdef USE_TRANSMISSION\n\tvarying vec3 vWorldPosition;\n#endif", "varying vec3 vWorldPosition;")
+          .replace("#ifdef USE_TRANSMISSION\n\tvWorldPosition = worldPosition.xyz;\n#endif", "vWorldPosition = worldPosition.xyz;");
+
+        info.fragmentShader = info.fragmentShader
+          .replace("varying vec3 vViewPosition;", "varying vec3 vViewPosition;varying vec3 vWorldPosition;")
+          .replace("void main() {", "float rand(vec3 co){return fract(sin(dot(co, vec3(12.9898, 78.233, 45.723))) * 43758.5453);}void main() {")
+          .replace("vec4 diffuseColor = vec4( diffuse, opacity );", `vec4 diffuseColor = vec4( diffuse * (1.0 + floor(rand(floor(vWorldPosition * 16.0 * ${1/(scale+0.00000000001)} + 0.0001) / 16.0) * 4.0) / 4.0 / 4.0), opacity );`);
+       */ 
       }
     }
   }

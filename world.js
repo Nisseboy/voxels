@@ -3,8 +3,13 @@ let invChunkSize = 1 / chunkSize;
 let defaultPlaceDepth = Math.log2(chunkSize);
 
 class World {
-  constructor() {
-    this.size = new THREE.Vector3(5, 1, 5);
+  constructor(size, scale) {
+    this.size = size;
+    this.scale = scale;
+
+    this.materials = materials.map(e => {return new Material(e, this.scale)});
+
+    this.entities = [];
     
     /*
     0: is regular node?
@@ -14,16 +19,51 @@ class World {
     if it's a leaf node with all zeroes it's air.
     */
 
+    this.THREEGroup = new THREE.Group();
+    THREEscene.add(this.THREEGroup);
+    
+    this.chunks = new Array(this.size.x * this.size.y * this.size.z).fill(undefined).map((e, i) => {
+      let group = new THREE.Group();
+      this.THREEGroup.add(group);
+      let basePos = new THREE.Vector3(
+        Math.floor(i % this.size.x), 
+        Math.floor((i / this.size.x) % this.size.y), 
+        Math.floor(i / (this.size.x * this.size.y))
+      );
+      group.position.copy(basePos).multiplyScalar(this.scale);
+      group.scale.set(this.scale, this.scale, this.scale);
+
+      return {data: [0], THREEGroup: group, dirty: true};
+    });
+
+
+    let h = Math.ceil(128 * this.size.x * this.size.y * this.size.z);
+    this.voxelData = new Array(128 * 128 * this.size.x * this.size.y * this.size.z);
+    this.voxelDataTexture = new THREE.DataTexture(new Uint32Array(this.voxelData), 128, h, THREE.RedIntegerFormat, THREE.UnsignedIntType);
+    this.voxelDataTexture.internalFormat='RGBA32UI';
+    this.voxelDataTexture.minFilter = this.voxelDataTexture.magFilter = THREE.NearestFilter;
+
+    let geo = new THREE.PlaneGeometry(1, 1);
+    let mat = new THREE.ShaderMaterial({
+      vertexShader: THREEShaders.raytracing.vertex,
+      fragmentShader: THREEShaders.raytracing.fragment,
+      uniforms: {
+        resolution: {value: new THREE.Vector2(window.innerWidth, window.innerHeight)},
+        voxelData: {value: this.voxelDataTexture},
+      }
+    });
+    this.voxelDataObject = new THREE.Mesh( geo, mat );
+    //this.THREEGroup.add(this.voxelDataObject);
+  }
+
+  generateWorld(mode) {
     let startTime = performance.now();
-
-    this.chunks = new Array(this.size.x * this.size.y * this.size.z).fill(undefined).map(e => {return {data: [0], THREEObjects: [], dirty: true}});
-
-    let mode = "terrain";
+    
     if (mode == "terrain" || mode == "cube" || mode == "block") {
       for (let x = 0; x < this.size.x; x+=invChunkSize) {
         for (let y = 0; y < this.size.y; y+=invChunkSize) {
           for (let z = 0; z < this.size.z; z+=invChunkSize) {
-            if (mode == "terrain" && (y < 0.5 + noise.perlin2(x / 2, z / 2) / 2)) this.setNode(new THREE.Vector3(x, y, z), defaultPlaceDepth + 1);
+            if (mode == "terrain" && (y < 0.5 + noise.perlin2(x / 2, z / 2) / 2)) this.setNode(new THREE.Vector3(x, y, z), 1);
             if (mode == "cube" && (x == 0 || x == this.size.x - invChunkSize || y == 0 || y == this.size.y - invChunkSize || z == 0 || z == this.size.z - invChunkSize)) this.setNode(new THREE.Vector3(x, y, z), 1);
             if (mode == "block" && (x < invChunkSize * 4 && y < invChunkSize * 4 && z > this.size.z - invChunkSize * 5)) this.setNode(new THREE.Vector3(x, y, z), 1);
           }
@@ -55,12 +95,37 @@ class World {
 
       this.explosion(start.clone().add(new THREE.Vector3(0.5, 0.25, 0.5)), {power: 10000, maxR: 2, silent: true});
     }
-    
+
+    for (let i of this.chunks) i.dirty = true;
+
     console.log(`Chunks initialized in ${performance.now() - startTime} ms`);
+  }
+  loadVox(vox) {
+    let startTime = performance.now();
+    
+    let size = vox.body.children[0].content;
+    this.size = new THREE.Vector3(Math.ceil(size.x / 16), Math.ceil(size.z / 16), Math.ceil(size.y / 16));
+    
+    let p = vox.body.children[2].content.palette;
+    for (let i = 0; i < p.length - 1; i++) {
+      this.materials[i] = new Material({c: rgbToHex(p[i+1]), strength: 0}, this.scale);
+    }
+
+    let n = 0;
+    for (let i of vox.body.children[1].content.voxels) {
+      this.setNode(new THREE.Vector3(i.x / 16, i.z / 16, i.y / 16), i.i);
+      n++;
+    }
+
+    for (let i of this.chunks) i.dirty = true;
+
+    console.log(`.vox of ${n} voxels initialized in ${performance.now() - startTime} ms`);
   }
 
   update() {
     this.updateTHREEObjects();
+
+    for (let e of this.entities) e.update();
   }
 
   updateTHREEObjects() {
@@ -72,7 +137,7 @@ class World {
       for (let y = 0; y < this.size.y; y++) {
         for (let z = 0; z < this.size.z; z++) {
           let c = this.getChunk({x, y, z});
-          if (!c.dirty) continue;
+          if (!c || !c.dirty) continue;
           c.dirty = false;
 
           for (let X = -1; X < 2; X++) {
@@ -91,9 +156,14 @@ class World {
     }
 
     for (let i of dirtyChunks) {
-      if (i.dirty) this.squishChunk(i);
+      if (i && i.dirty) this.squishChunk(i);
       
       this.addTHREEObjects(i);
+
+      /*let index = this.chunks.indexOf(i);
+      this.voxelData.splice(index * 128*128, 128*128, i.data);
+      this.voxelDataTexture.image.data = new Uint32Array(this.voxelData);
+      this.voxelDataTexture.needsUpdate = true;*/
 
       n++;
     }
@@ -129,7 +199,7 @@ class World {
       new THREE.Vector3(invChunkSize / 2, 0, 0),
     ];
     
-    let rawData = new Array(materials.length * (chunkSize + 2) * (chunkSize + 2) ).fill(0);
+    let rawData = new Array(this.materials.length * (chunkSize + 2) * (chunkSize + 2) ).fill(0);
     let seenMaterials = [];
 
     let empty = true;
@@ -168,12 +238,11 @@ class World {
               rawData[data * (chunkSize + 2) * (chunkSize + 2) + X * (chunkSize + 2) + Y] |= ((node ? 1 : 0) << Z);
               seenMaterials[data] = true;
 
-              if (materials[data].emissive) {
-                let light = new THREE.PointLight(materials[data].emissive);
+              if (this.materials[data].emissive) {
+                let light = new THREE.PointLight(this.materials[data].emissive);
                 
-                light.position.set(basePos.x + pos.x + x * invChunkSize, basePos.y + pos.y + y * invChunkSize, basePos.z + pos.z + z * invChunkSize).addScalar(invChunkSize / 2);
-                THREEscene.add(light);
-                chunk.THREEObjects.push(light);
+                light.position.set(pos.x + x * invChunkSize, pos.y + y * invChunkSize, pos.z + z * invChunkSize).addScalar(invChunkSize / 2);
+                chunk.THREEGroup.add(light);
               }
             }
           }
@@ -183,6 +252,7 @@ class World {
 
     if (!empty)
     for (let x = 0; x < chunkSize + 2; x++) {
+      let X = basePos.x + (x - 1) * invChunkSize;
       for (let y = 0; y < chunkSize + 2; y++) {
         for (let z = 0; z < chunkSize + 2; z++) {
           if (
@@ -206,9 +276,9 @@ class World {
       let offsetUp = offset.clone().cross(offsetRight);
       offsetUp.divideScalar(offsetUp.length() / (-invChunkSize / 2));
       
-      let facedData = new Array(materials.length * (chunkSize + 2) * (chunkSize + 2) ).fill(0);
+      let facedData = new Array(this.materials.length * (chunkSize + 2) * (chunkSize + 2) ).fill(0);
 
-      for (let mat = 0; mat < materials.length; mat++) {
+      for (let mat = 0; mat < this.materials.length; mat++) {
         if (!seenMaterials[mat]) continue;
         for (let x = 0; x < chunkSize + 2; x++) {
           for (let y = 0; y < chunkSize + 2; y++) {
@@ -232,7 +302,7 @@ class World {
         }
       }
 
-      for (let mat = 1; mat < materials.length; mat++) {
+      for (let mat = 1; mat < this.materials.length; mat++) {
         if (!seenMaterials[mat]) continue;
         
         let geometry = new THREE.BufferGeometry();
@@ -361,24 +431,28 @@ class World {
         geometry.toNonIndexed();
         geometry.computeVertexNormals();
 
-        const mesh = new THREE.Mesh( geometry, materials[mat].THREEMaterial );
-        mesh.position.copy(basePos).subScalar(invChunkSize / 2);
+        const mesh = new THREE.Mesh( geometry, this.materials[mat].THREEMaterial );
+        mesh.position.subScalar(invChunkSize / 2);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
         mesh.layers.enable(1);
     
-        THREEscene.add(mesh);
-        chunk.THREEObjects.push(mesh);
+        chunk.THREEGroup.add(mesh);
       }
     }
   }
 
   removeTHREEObjects(chunk) {
-    for (let o of chunk.THREEObjects) {THREEscene.remove(o); if (o.dispose) o.dispose()}
-    chunk.THREEObjects.length = [];
+    for (let i = 0; i < chunk.THREEGroup.children.length;) {
+      let o = chunk.THREEGroup.children[i];
+      chunk.THREEGroup.remove(o); 
+
+      if (o.dispose) o.dispose();
+    }
   }
 
   getChunk(pos) {
+    if (pos.x < 0 || pos.y < 0 || pos.z < 0 || pos.x >= this.size.x || pos.y >= this.size.y || pos.z >= this.size.z) return;
     return this.chunks[Math.floor(pos.x) + Math.floor(pos.y) * this.size.x + Math.floor(pos.z) * this.size.x * this.size.y];
   }
 
@@ -527,7 +601,7 @@ class World {
       dir.z = Math.sin(phi) * r;
 
       let hit = this.cheapRayCast(pos, dir);
-      if (!hit || hit.distance > maxR || materials[hit.node & 0b01111111111111111111111111111111].strength > Math.random()) continue;
+      if (!hit || hit.distance > maxR || this.materials[hit.node & 0b01111111111111111111111111111111].strength > Math.random()) continue;
 
       this.setNode(hit.pos, 0);
     }

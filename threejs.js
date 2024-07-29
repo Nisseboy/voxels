@@ -43,6 +43,7 @@ async function THREEMain() {
     noise: {vertex: await loadFile("shaders/noise-vertex.glsl"), fragment: await loadFile("shaders/noise-fragment.glsl")},
     raytracing: {vertex: await loadFile("shaders/raytracing-vertex.glsl"), fragment: await loadFile("shaders/raytracing-fragment.glsl")},
   };
+  
 
   function animate() {
     update();
@@ -52,6 +53,7 @@ async function THREEMain() {
     }
   }
   start();
+  console.log(scene);
   THREErenderer.setAnimationLoop( animate );
 }
 
@@ -61,4 +63,9 @@ async function loadFile(fileName) {
   let loader = new THREE.FileLoader();
   let res = await loader.loadAsync(fileName);
   return res;
+}
+
+async function loadVOX(path) {
+  let data = (await(await fetch(path)).arrayBuffer());
+  return parseVox(data);
 }
