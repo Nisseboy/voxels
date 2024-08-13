@@ -52,8 +52,7 @@ async function THREEMain() {
       THREErenderer.render( THREEscene, camera );
     }
   }
-  start();
-  console.log(scene);
+  await start();
   THREErenderer.setAnimationLoop( animate );
 }
 

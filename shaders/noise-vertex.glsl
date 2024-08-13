@@ -1,6 +1,7 @@
 #define STANDARD
 varying vec3 vViewPosition;
 varying vec3 vWorldPosition;
+varying vec3 vCameraPosition;
 #include <common>
 #include <batching_pars_vertex>
 #include <uv_pars_vertex>
@@ -37,4 +38,5 @@ void main() {
 	#include <shadowmap_vertex>
 	#include <fog_vertex>
 	vWorldPosition = worldPosition.xyz;
+	vCameraPosition = cameraPosition;
 }
